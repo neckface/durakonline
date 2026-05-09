@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Durak Online - Test-Panel</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    
+    <style>
+        body { font-family: sans-serif; background: #1e1e24; color: #fff; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: #2a2a35; padding: 20px; border-radius: 10px; }
+        input, button { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: none; font-size: 16px; }
+        button { background: #4caf50; color: white; cursor: pointer; font-weight: bold; }
+        button:hover { background: #45a049; }
+        .card-box { display: inline-block; background: white; color: black; padding: 10px 15px; margin: 5px; border-radius: 5px; font-weight: bold; font-size: 18px; }
+        #gameArea { display: none; margin-top: 20px; border-top: 1px solid #444; padding-top: 20px; }
+        .red { color: red; } /* CSS-Klasse für rote Karten (Herz und Karo) */
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>♠♣♥♦ Durak Test-Panel</h2>
+    
+    <div id="authScreen">
+        <h3>Schritt 1: Login (Speichern in PostgreSQL)</h3>
+        <input type="text" id="usernameInput" placeholder="Gib deinen Benutzernamen ein" value="Test_Spieler_1">
+        <button onclick="login()">Einloggen / Registrieren</button>
+    </div>
+
+    <div id="lobbyScreen" style="display: none;">
+        <h3>Willkommen, <span id="displayUsername" style="color: #4caf50;"></span>!</h3>
+        <p>Dein Guthaben aus der Datenbank: <strong id="displayBalance" style="color: gold;"></strong> 💰</p>
+        <hr>
+        <h3>Schritt 2: Mit dem Spiel verbinden</h3>
+        
+        <button onclick="createLobby()">Neue Lobby erstellen</button>
+        
+        <input type="text" id="lobbyIdInput" placeholder="Füge die Lobby-ID ein, um beizutreten">
+        <button onclick="joinLobby()" style="background: #2196F3;">Der Lobby beitreten</button>
+    </div>
+
+    <div id="gameArea">
+        <h3>Das Spiel hat begonnen! 🎮</h3>
+        <p>Trumpf: <span id="trumpCard" style="font-size: 24px;"></span></p>
+        <h4>Deine Karten:</h4>
+        
+        <div id="myCards"></div>
+    </div>
+</div>
+
+<script>
+    // Adresse deines Servers (Node.js muss laufen)
+    const SERVER_URL = 'http://localhost:3000';
+    let socket;
+    let userId; // Hier speichern wir die ID des Benutzers aus der Datenbank
+
+    // Funktion: Benutzername an den Server senden und Guthaben abrufen
+    async function login() {
+        const username = document.getElementById('usernameInput').value;
+        if (!username) return alert('Bitte gib einen Benutzernamen ein!');
+
+        try {
+            // HTTP-Anfrage an unseren Node.js Server senden
+            const response = await fetch(`${SERVER_URL}/api/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username })
+            });
+
+            const data = await response.json();
+            
+            // Wenn der Server erfolgreich antwortet und eine ID sendet
+            if (data.id) {
+                userId = data.id; // ID merken
+                
+                // Daten auf dem Lobby-Bildschirm anzeigen
+                document.getElementById('displayUsername').innerText = data.username;
+                document.getElementById('displayBalance').innerText = data.balance;
+                
+                // Login-Bildschirm ausblenden und Lobby anzeigen
+                document.getElementById('authScreen').style.display = 'none';
+                document.getElementById('lobbyScreen').style.display = 'block';
+
+                // Socket-Verbindung initialisieren
+                initSocket();
+            }
+        } catch (err) {
+            alert('Fehler bei der Verbindung zum Server: ' + err);
+        }
+    }
+
+    // Funktion: Echtzeit-Verbindung zum Spiel aufbauen (Sockets)
+    function initSocket() {
+        // Verbinden und sofort unsere Datenbank-ID übergeben
+        socket = io(SERVER_URL, {
+            query: { userId: userId }
+        });
+
+        // Server bestätigt die Verbindung
+        socket.on('connect', () => {
+            console.log('🟢 Erfolgreich über Sockets mit dem Server verbunden');
+        });
+
+        // Server sendet die ID der neu erstellten Lobby
+        socket.on('lobby_created', (data) => {
+            alert(`Lobby erfolgreich erstellt!\nKopiere diese ID und sende sie an den zweiten Spieler:\n\n${data.lobbyId}`);
+        });
+
+        // Server teilt mit, dass das Spiel gestartet wurde (beide Spieler sind da)
+        socket.on('game_started', (data) => {
+            // Lobby ausblenden, Spieltisch anzeigen
+            document.getElementById('lobbyScreen').style.display = 'none';
+            document.getElementById('gameArea').style.display = 'block';
+
+            // Trumpfkarte anzeigen
+            const trump = data.trumpCard.suit + " " + data.trumpCard.rank;
+            document.getElementById('trumpCard').innerText = trump;
+            
+            // Wenn die Farbe rot ist (Herz oder Karo), Text rot färben
+            if (data.trumpCard.suit === '♥' || data.trumpCard.suit === '♦') {
+                document.getElementById('trumpCard').className = 'red';
+            }
+
+            // Karten-Container leeren und die vom Server gesendeten Karten zeichnen
+            const cardsDiv = document.getElementById('myCards');
+            cardsDiv.innerHTML = ''; // Leeren
+            
+            data.myCards.forEach(card => {
+                const cardEl = document.createElement('div');
+                cardEl.className = 'card-box';
+                
+                // Rote Farben anpassen
+                if (card.suit === '♥' || card.suit === '♦') {
+                    cardEl.classList.add('red');
+                }
+                
+                cardEl.innerText = `${card.suit} ${card.rank}`; // Farbe und Wert schreiben
+                cardsDiv.appendChild(cardEl); // Karte zum Bildschirm hinzufügen
+            });
+        });
+
+        // Falls ein Fehler auftritt (z.B. Lobby ist voll)
+        socket.on('error', (data) => {
+            alert('Fehler: ' + data.message);
+        });
+    }
+
+    // Funktion: Befehl "Lobby erstellen" an den Server senden
+    function createLobby() {
+        socket.emit('create_lobby');
+    }
+
+    // Funktion: Befehl "Lobby beitreten" an den Server senden
+    function joinLobby() {
+        const lobbyId = document.getElementById('lobbyIdInput').value;
+        if (!lobbyId) return alert('Bitte gib eine Lobby-ID ein!');
+        
+        socket.emit('join_lobby', { lobbyId: lobbyId });
+    }
+</script>
+</body>
+</html>

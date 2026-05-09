@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Durak Tester</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        button, input { margin: 5px; padding: 10px; }
+        #log { background: #eee; padding: 10px; height: 200px; overflow-y: scroll; font-family: monospace;}
+    </style>
+</head>
+<body>
+    <h2>Durak Lobby Tester</h2>
+    
+    <button onclick="connectToServer()">1. Verbinden</button>
+    <button onclick="createLobby()">2. Lobby erstellen</button>
+    
+    <hr>
+    
+    <input type="text" id="lobbyInput" placeholder="Lobby-ID hier rein">
+    <button onclick="joinLobby()">3. Lobby beitreten</button>
+    
+    <hr>
+    
+    <button onclick="playCard()">4. Test-Karte spielen (Herz Ass)</button>
+
+    <h3>Server-Logs:</h3>
+    <div id="log"></div>
+
+    <script>
+        let socket;
+        let myLobbyId = "";
+
+        function logToScreen(msg) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += `<div>${new Date().toLocaleTimeString()}: ${msg}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function connectToServer() {
+            socket = io('http://localhost:3000'); // Verbindet sich mit eurem Terminal
+            
+            socket.on('connect', () => logToScreen('🟢 Verbunden mit ID: ' + socket.id));
+            
+            // Auf Antworten vom Server lauschen
+            socket.on('lobby_created', (data) => {
+                myLobbyId = data.lobbyId;
+                logToScreen('🏠 Lobby erstellt! ID: <b>' + myLobbyId + '</b>');
+                document.getElementById('lobbyInput').value = myLobbyId;
+            });
+
+            socket.on('game_started', (data) => {
+                logToScreen('🚀 ' + data.message);
+            });
+
+            socket.on('opponent_played', (data) => {
+                logToScreen('🃏 Gegner hat Karte gespielt: <b>' + data.card + '</b>');
+            });
+
+            socket.on('error', (data) => logToScreen('❌ Fehler: ' + data.message));
+        }
+
+        function createLobby() { socket.emit('create_lobby'); }
+        function joinLobby() { 
+            const id = document.getElementById('lobbyInput').value;
+            myLobbyId = id; // Speichern für Kartenzüge
+            socket.emit('join_lobby', { lobbyId: id }); 
+        }
+        function playCard() { socket.emit('play_card', { lobbyId: myLobbyId, card: 'Herz Ass' }); }
+    </script>
+</body>
+</html>
