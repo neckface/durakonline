@@ -1,6 +1,12 @@
 node_modules
 # Keep environment variables out of version control
 node_modules
+# Игнорируем временные файлы редакторов
+*~
+*.swp
+
+# Игнорируем файлы окружения
 .env
+.env~
 dist/
 /generated/prisma
