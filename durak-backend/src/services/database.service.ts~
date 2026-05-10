@@ -1,0 +1,58 @@
+// src/services/database.service.ts
+import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+
+// 1. Инициализируем Prisma (Один раз на все приложение)
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error("ВНИМАНИЕ: DATABASE_URL не найден в файле .env!");
+
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
+export const prisma = new PrismaClient({ adapter });
+
+// 2. Класс для работы с базой данных
+export class DatabaseService {
+  
+  // Авторизация пользователя
+  static async loginUser(username: string) {
+    let user = await prisma.user.findUnique({ where: { username } });
+    
+    if (!user) {
+      user = await prisma.user.create({ data: { username, balance: 1500 } });
+      console.log(`👤 Новый игрок в БД: ${username}`);
+    } else {
+      // Обновляем время последнего входа
+      user = await prisma.user.update({
+        where: { username },
+        data: { lastLogin: new Date() }
+      });
+      console.log(`👋 Игрок вернулся: ${username}`);
+    }
+    
+    return user;
+  }
+
+  // Создание нового лобби в БД
+  static async createLobby(creatorId: string) {
+    const session = await prisma.gameSession.create({
+      data: {
+        creatorId: creatorId,
+        status: 'WAITING',
+        maxPlayers: 2,
+        betAmount: 0,
+      }
+    });
+
+    // Сразу добавляем создателя как первого игрока за стол
+    await prisma.sessionPlayer.create({
+      data: {
+        sessionId: session.id,
+        userId: creatorId,
+        seatPosition: 1,
+      }
+    });
+
+    return session;
+  }
+}

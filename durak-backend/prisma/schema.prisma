@@ -7,7 +7,82 @@ datasource db {
 }
 
 model User {
-  id       String   @id @default(uuid())
-  username String   @unique
-  balance  Int      @default(1500)
+  id            String            @id @default(uuid())
+  username      String            @unique
+  passwordHash  String?           // Сделаем опциональным, так как пока входим по нику
+  balance       Decimal           @default(1500) @db.Decimal(10, 2)
+  createdAt     DateTime          @default(now())
+  lastLogin     DateTime?
+  
+  transactions  UserTransaction[]
+  createdSessions GameSession[]   @relation("Creator")
+  activeTurns   GameSession[]     @relation("CurrentTurn")
+  sessions      SessionPlayer[]
+  heldCards     GameStateCard[]
+}
+
+model UserTransaction {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  amount          Decimal  @db.Decimal(10, 2)
+  transactionType String   // "BET", "WIN", "REFUND"
+  sessionId       String?
+  createdAt       DateTime @default(now())
+}
+
+model CardsDictionary {
+  id         Int             @id @default(autoincrement())
+  suit       String          // "SPADES", "CLUBS", "HEARTS", "DIAMONDS"
+  rank       String          // "6", "7", ..., "A"
+  powerValue Int
+  
+  sessionsWithTrump GameSession[]
+  gameStateCards    GameStateCard[]
+}
+
+model GameSession {
+  id                String          @id @default(uuid())
+  creatorId         String
+  creator           User            @relation("Creator", fields: [creatorId], references: [id])
+  status            String          @default("WAITING") // "WAITING", "PLAYING", "FINISHED"
+  maxPlayers        Int             @default(2)
+  betAmount         Decimal         @default(0) @db.Decimal(10, 2)
+  potAmount         Decimal         @default(0) @db.Decimal(10, 2)
+  trumpCardId       Int?
+  trumpCard         CardsDictionary? @relation(fields: [trumpCardId], references: [id])
+  currentTurnUserId String?
+  currentTurnUser   User?           @relation("CurrentTurn", fields: [currentTurnUserId], references: [id])
+  createdAt         DateTime        @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+
+  players           SessionPlayer[]
+  cards             GameStateCard[]
+}
+
+model SessionPlayer {
+  sessionId     String
+  userId        String
+  session       GameSession @relation(fields: [sessionId], references: [id])
+  user          User        @relation(fields: [userId], references: [id])
+  seatPosition  Int
+  isReady       Boolean     @default(false)
+  playerStatus  String      @default("ACTIVE") // "ACTIVE", "LEFT", "WINNER", "LOSER"
+
+  @@id([sessionId, userId])
+}
+
+model GameStateCard {
+  sessionId     String
+  cardId        Int
+  session       GameSession     @relation(fields: [sessionId], references: [id])
+  card          CardsDictionary @relation(fields: [cardId], references: [id])
+  location      String          // "DECK", "HAND", "TABLE", "DISCARD"
+  userId        String?
+  user          User?           @relation(fields: [userId], references: [id])
+  orderIndex    Int             @default(0)
+  linkedCardId  Int?            // Для связи нападающей и отбивающей карты
+
+  @@id([sessionId, cardId])
 }
